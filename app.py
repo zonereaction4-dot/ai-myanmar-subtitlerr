@@ -1,75 +1,157 @@
+import streamlit as str_lit
 import os
-import streamlit as st
+import google.generativeai as genai
+import re
+import json
 from utils.video_merger import merge_subtitles_to_video
 
-# ဒေါင်းလုဒ်ဆွဲမည့် ဖိုင်တွဲကို ကြိုတင်ဆောက်ထားခြင်း
-if not os.path.exists("downloads"):
-    os.makedirs("downloads")
+# 🔑 [AI KEY CONFIG] Streamlit Cloud Secrets မှတစ်ဆင့် Gemini API အား ချိတ်ဆက်ခြင်း
+if "GEMINI_API_KEY" in str_lit.secrets:
+    genai.configure(api_key=str_lit.secrets["GEMINI_API_KEY"])
+elif "google_api_key" in str_lit.secrets:
+    genai.configure(api_key=str_lit.secrets["google_api_key"])
+else:
+    if os.path.exists("key.txt"):
+        with open("key.txt", "r") as f:
+            genai.configure(api_key=f.read().strip())
 
-st.set_page_config(page_title="AI Myanmar Subtitler Pro", layout="wide")
+str_lit.set_page_config(page_title="AI Myanmar Subtitler Pro", layout="wide")
 
-st.title("🎬 AI Myanmar Subtitler & Copyright Bypass Pro")
-st.write("ဗီဒီယိုများအား မြန်မာစာလုံးပေါင်းသတ်ပုံအမှန်ဖြင့် စာတန်းထိုးခြင်း၊ Size ညှိခြင်းနှင့် Background Music ရောစပ်ခြင်း စနစ်။")
+# Custom CSS for Premium UI
+str_lit.markdown("""
+    <style>
+    .main-title { font-size: 36px !important; font-weight: bold; color: #FFFFFF; margin-bottom: 5px; }
+    .sub-title { font-size: 18px !important; color: #B0B0B0; margin-bottom: 25px; }
+    .stRadio > label { font-size: 18px !important; font-weight: bold !important; color: #FFFFFF !important; }
+    </style>
+""", unsafe_allow_html=True)
 
-# ဘယ်ဘက်ခြမ်း Sidebar တွင် ရွေးချယ်မှုပုံစံ ပြုလုပ်ခြင်း
-st.sidebar.header("⚙️ လုပ်ဆောင်ချက် ရွေးချယ်ရန်")
-mode = st.sidebar.radio(
-    "အသုံးပြုမည့် နည်းလမ်းကို ရွေးချယ်ပါ:",
-    ["✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်မြှုပ်နှံမည် (အကြံပြုချက်)", "🤖 AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးမည် (Gemini)"]
+str_lit.markdown('<p class="main-title">🎬 Copyright Bypass Pro</p>', unsafe_allow_html=True)
+str_lit.markdown('<p class="sub-title">ဗီဒီယိုများအား မြန်မာစာလုံးပေါင်းသတ်ပုံအမှန်ဖြင့် စာတန်းထိုးခြင်းနှင့် Size ညှိခြင်းစနစ်။</p>', unsafe_allow_html=True)
+
+# Sidebar Options
+str_lit.sidebar.markdown("### ⚙️ လုပ်ဆောင်ချက် ရွေးချယ်ရန်")
+mode = str_lit.sidebar.radio(
+    "အသုံးပြုမည့် နည်းလမ်းကို ရွေးချယ်ပါ-",
+    ["✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်မြှုပ်နှံမည် (အကြံပြုချက်)", "🤖 AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးမည် (Gemini Mode)"]
 )
 
-# -----------------------------------------------------------------
-# ⚡ နည်းလမ်း (၁) - ဗီဒီယို၊ SRT နှင့် BGM တိုက်ရိုက်မြှုပ်နှံခြင်း (Size & Audio Fixed)
-# -----------------------------------------------------------------
-if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်မြှုပ်နှံမည် (အကြံပြုချက်)":
-    st.markdown("### ⚡ ဗီဒီယို၊ စာတန်းထိုး နှင့် နောက်ခံတီးလုံး တိုက်ရိုက်မြှုပ်နှံခြင်း")
-    st.caption("ဤစနစ်သည် ဗီဒီယို Size ညှိခြင်း၊ မြန်မာစာလုံးပေါင်းပြင်ခြင်းနှင့် Copyright ကင်းလွတ်စေရန် အသံနှင့်ဗီဒီယိုကို ပုံဖျက်ရောစပ်ပေးမည်ဖြစ်ပါသည်။")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        up_video = st.file_uploader("၁။ မိမိစက်ထဲမှ ဗီဒီယိုဖိုင်ကို တင်ပါ (.mp4)", type=["mp4"])
-        up_srt = st.file_uploader("၂။ ၎င်းဗီဒီယိုအတွက် စာတန်းထိုးဖိုင်ကို တင်ပါ (.srt)")
-        
-    with col2:
-        up_bgm = st.file_uploader("၃။ [မဖြစ်မနေ] Copyright ကင်းလွတ်စေမည့် နောက်ခံတီးလုံး တင်ပါ (.mp3 / .wav)", type=["mp3", "wav", "m4a"])
-        video_size = st.selectbox(
-            "၄။ ဗီဒီယို အချိုးအစား (Size) ကို ရွေးချယ်ပါ:",
-            ["မူရင်းအတိုင်း (Original)", "1:1 (Facebook Square)", "9:16 (TikTok / Reels)", "16:9 (YouTube / FB Video)"]
-        )
-    
-    if up_video is not None and up_srt is not None and up_bgm is not None:
-        if st.button("🎬 စာတန်းထိုးနှင့် တီးလုံး ပေါင်းစပ်ထုတ်ယူမည်"):
-            v_path = os.path.join("downloads", up_video.name)
-            s_path = os.path.join("downloads", up_srt.name)
-            b_path = os.path.join("downloads", up_bgm.name)
-            
-            with open(v_path, "wb") as f:
-                f.write(up_video.getbuffer())
-            with open(s_path, "wb") as f:
-                f.write(up_srt.getbuffer())
-            with open(b_path, "wb") as f:
-                f.write(up_bgm.getbuffer())
-                
-            with st.spinner("ရုပ်သံဗီဒီယို ပုံဖျက်ခြင်း၊ Size ညှိခြင်းနှင့် နောက်ခံတီးလုံး ရောစပ်ခြင်းများကို လုပ်ဆောင်နေပါသည်..."):
-                try:
-                    final_video = merge_subtitles_to_video(v_path, s_path, bgm_path=b_path, size_choice=video_size)
-                    st.success("🎬 စာလုံးပေါင်းမှန်၊ ရုပ်သံပုံဖျက်ခြင်းနှင့် BGM ရောစပ်ခြင်း အောင်မြင်စွာ ပြီးဆုံးပါပြီဗျာ။")
-                    
-                    with open(final_video, "rb") as vf:
-                        st.video(vf.read())
-                except Exception as e:
-                    st.error(f"⚠️ ပေါင်းစပ်စဉ် အမှားအယွင်းရှိသည်: {str(e)}")
+def clean_json_string(raw_code):
+    raw_code = re.sub(r'//.*?\n', '\n', raw_code)
+    match = re.search(r'\[\s*\{.*\}\s*\]', raw_code, re.DOTALL)
+    if match:
+        return match.group(0)
+    return raw_code.strip()
 
-# -----------------------------------------------------------------
-# 🤖 နည်းလမ်း (၂) - AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးခြင်း (Gemini Mode)
-# -----------------------------------------------------------------
+def generate_srt_from_ai(video_path):
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        video_file = genai.upload_file(path=video_path)
+        
+        prompt = """
+        Analyze this video and generate subtitles in Myanmar language. 
+        Return ONLY a raw JSON array of objects. Do not include markdown formatting, no ```json, no explanations.
+        Each object MUST have 'start' (float seconds), 'end' (float seconds), and 'text' (Myanmar text transcription).
+        Example format: [{"start": 0.5, "end": 3.2, "text": "မင်္ဂလာပါဗျာ"}]
+        """
+        
+        response = model.generate_content([video_file, prompt])
+        genai.delete_file(video_file.name)
+        
+        cleaned_reply = clean_json_string(response.text)
+        data = json.loads(cleaned_reply)
+        
+        srt_content = ""
+        for idx, item in enumerate(data, 1):
+            start_sec = item['start']
+            end_sec = item['end']
+            text = item['text']
+            
+            def format_time(seconds):
+                h = int(seconds // 3600)
+                m = int((seconds % 3600) // 60)
+                s = int(seconds % 60)
+                ms = int((seconds - int(seconds)) * 1000)
+                return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+                
+            srt_content += f"{idx}\n{format_time(start_sec)} --> {format_time(end_sec)}\n{text}\n\n"
+            
+        ai_srt_path = "ai_generated.srt"
+        with open(ai_srt_path, "w", encoding="utf-8") as f:
+            f.write(srt_content.strip() + "\n")
+        return ai_srt_path
+    except Exception as e:
+        str_lit.error(f"AI ကနေ စာတန်းဖတ်ယူရာတွင် အမှားအယွင်းရှိနေပါသည်- {str(e)}")
+        return None
+
+# --- MODE 1: MANUAL SRT MERGE ---
+if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်မြှုပ်နှံမည် (အကြံပြုချက်)":
+    col1, col2 = str_lit.columns(2)
+    with col1:
+        v_file = str_lit.file_uploader("၁။ မိမိစက်ထဲမှ ဗီဒီယိုဖိုင် တင်ပါ (.mp4)", type=["mp4", "mov"])
+        srt_file = str_lit.file_uploader("၂။ ၎င်းဗီဒီယိုအတွက် စာတန်းထိုးဖိုင် တင်ပါ (.srt)", type=["srt"])
+    with col2:
+        bgm_file = str_lit.file_uploader("၃။ [မဖြစ်မနေမဟုတ်] နောက်ခံတေးဂီတ တင်ပါ (.mp3 / .wav)", type=["mp3", "wav"])
+        size_opt = str_lit.selectbox("၄။ ဗီဒီယို အရွယ်အစား (Size) ကို ရွေးချယ်ပါ-", ["မူရင်းအတိုင်း (Original)", "1:1 (Facebook Square)", "9:16 (TikTok / Reels)", "16:9 (YouTube / FB Video)"])
+
+    if str_lit.button("🎬 စာတန်းထိုးနှင့် ဗီဒီယို ပေါင်းစပ်ထုတ်ယူမည်"):
+        if v_file and srt_file:
+            with str_lit.spinner("🔮 ဗီဒီယိုအား စတိုင်သစ်များဖြင့် ပေါင်းစပ်ဖန်တီးနေပါသည်... ခေတ္တစောင့်ဆိုင်းပေးပါ..."):
+                with open("temp_v.mp4", "wb") as f: f.write(v_file.read())
+                with open("temp_s.srt", "wb") as f: f.write(srt_file.read())
+                
+                bgm_p = None
+                if bgm_file:
+                    bgm_p = "temp_b.mp3"
+                    with open(bgm_p, "wb") as f: f.write(bgm_file.read())
+                
+                output = merge_subtitles_to_video("temp_v.mp4", "temp_s.srt", bgm_p, size_opt)
+                
+                if os.path.exists(output):
+                    str_lit.success("🎉 ဗီဒီယို ပေါင်းစပ်ခြင်း အောင်မြင်ပါသည်!")
+                    with open(output, "rb") as f:
+                        str_lit.download_button("📥 ပြီးစီးသည့် ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="final_video.mp4")
+                    str_lit.video(output)
+                    
+                    # Clean up
+                    for tmp in ["temp_v.mp4", "temp_s.srt", "temp_b.mp3", output]:
+                        if tmp and os.path.exists(tmp): os.remove(tmp)
+        else:
+            str_lit.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယိုနှင့် SRT ဖိုင်ကို အပြည့်အစုံ တင်ပေးပါဗျာ။")
+
+# --- MODE 2: AI AUTOMATIC SUBTITLE ---
 else:
-    st.markdown("### 🤖 Gemini AI ဖြင့် အော်တိုမြန်မာစာတန်းထိုး ထုတ်ယူခြင်း")
-    st.warning("မှတ်ချက်- Gemini AI Cloud Server အလုပ်များနေချိန်တွင် 503 Unavailable ဖြစ်နိုင်ပါသည်။ ထိုသို့ဖြစ်ပါက အထက်ပါ နည်းလမ်း (၁) ကို သုံးပါ။")
+    str_lit.markdown("### 🤖 Gemini AI ဖြင့် အော်တိုမြန်မာစာတန်းထိုးထုတ်ယူခြင်း")
+    str_lit.info("မှတ်ချက် - Gemini AI Cloud Server အလုပ်များနေချိန်တွင် 503 Unavailable ဖြစ်နိုင်ပါသည်။ ထိုသို့ဖြစ်ပါက အထက်ပါ နည်းလမ်း (၁) ကို သုံးပါ။")
     
-    ai_video = st.file_uploader("ဗီဒီယိုဖိုင် တင်သွင်းပါ (.mp4)", type=["mp4"], key="ai_vid")
-    if ai_video is not None:
-        st.info(f"လက်ရှိတင်သွင်းထားသော ဗီဒီယို: {ai_video.name}")
-        if st.button("🤖 AI ဖြင့် စာတန်းထိုး စတင်ထုတ်လုပ်မည်"):
-            st.error("Gemini AI API High Demand ဖြစ်နေပါသည်။ အပေါ်က 'ဗီဒီယို + SRT + BGM တိုက်ရိုက်မြှုပ်နှံမည်' ကို ပြောင်းလဲအသုံးပြုပေးပါရန်။")
+    col1, col2 = str_lit.columns(2)
+    with col1:
+        v_file = str_lit.file_uploader("မိမိဗီဒီယို တင်သွင်းပါ (.mp4)", type=["mp4"])
+    with col2:
+        size_opt = str_lit.selectbox("ဗီဒီယို အရွယ်အစား (Size) ကို ရွေးချယ်ပါ-", ["မူရင်းအတိုင်း (Original)", "1:1 (Facebook Square)", "9:16 (TikTok / Reels)", "16:9 (YouTube / FB Video)"])
+
+    if str_lit.button("🧠 AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးပြီး ဗီဒီယိုထုတ်ယူမည်"):
+        if v_file:
+            with str_lit.spinner("⚡ AI မှ ဗီဒီယိုကို နားထောင်ပြီး မြန်မာစာတန်းထိုး စတင်ဖန်တီးနေပါသည် (၁ မိနစ်ခန့် ကြာနိုင်သည်)..."):
+                with open("ai_temp_v.mp4", "wb") as f: f.write(v_file.read())
+                
+                # AI မှ SRT အော်တိုထုတ်ယူခြင်း
+                generated_srt = generate_srt_from_ai("ai_temp_v.mp4")
+                
+                if generated_srt and os.path.exists(generated_srt):
+                    str_lit.text_area("📝 AI မှ ထုတ်ပေးလိုက်သော SRT စာသားများ-", open(generated_srt, 'r', encoding='utf-8').read(), height=150)
+                    
+                    # 🎯 ART Font Effect ပါဝင်သော ဗီဒီယိုဖန်တီးရေးဆွဲမှုဆီသို့ လှမ်းပို့ခြင်း
+                    final_output = merge_subtitles_to_video("ai_temp_v.mp4", generated_srt, None, size_opt)
+                    
+                    if os.path.exists(final_output):
+                        str_lit.success("🎉 AI စနစ်ဖြင့် ဗီဒီယိုအော်တိုစာတန်းထိုးခြင်း အောင်မြင်ပါသည်!")
+                        with open(final_output, "rb") as f:
+                            str_lit.download_button("📥 AI စာတန်းထိုးပြီးသား ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="ai_final_video.mp4")
+                        str_lit.video(final_output)
+                        
+                        # Clean up
+                        for tmp in ["ai_temp_v.mp4", generated_srt, final_output]:
+                            if os.path.exists(tmp): os.remove(tmp)
+        else:
+            str_lit.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယိုဖိုင် တင်ပေးပါဗျာ။")
