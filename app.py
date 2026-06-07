@@ -1,6 +1,6 @@
 import streamlit as str_lit
 import os
-import time  # ⏳ ဗီဒီယိုဆာဗာပေါ်မှာ အဆင်သင့်ဖြစ်သည်အထိ စောင့်ရန်
+import time  # ⏳ ဗီဒီယိုဆာဗာပေါ်မှာ စောင့်ရန်နှင့် အချိန်ရေတွက်ရန်
 import google.generativeai as genai
 from google import genai as genai_v1
 import re
@@ -29,6 +29,7 @@ str_lit.markdown("""
     .main-title { font-size: 36px !important; font-weight: bold; color: #FFFFFF; margin-bottom: 5px; }
     .sub-title { font-size: 18px !important; color: #B0B0B0; margin-bottom: 25px; }
     .stRadio > label { font-size: 18px !important; font-weight: bold !important; color: #FFFFFF !important; }
+    .timer-box { background-color: #1E293B; border-left: 5px solid #3B82F6; padding: 15px; border-radius: 5px; margin: 15px 0; color: #38BDF8; font-weight: bold; font-size: 16px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -60,14 +61,14 @@ def generate_srt_from_ai(video_path):
         str_lit.info("⏳ ဗီဒီယိုအား AI ဆာဗာသို့ တင်သွင်းနေပါသည်...")
         video_file = client.files.upload(file=video_path)
         
-        # ✨ [CRITICAL FIX] ဗီဒီယိုဖိုင် ACTIVE ဖြစ်သည်အထိ ဆာဗာတွင် စောင့်ဆိုင်းပေးခြင်း
+        # ဗီဒီယိုဖိုင် ACTIVE ဖြစ်သည်အထိ ဆာဗာတွင် စောင့်ဆိုင်းပေးခြင်း
         str_lit.info("⚡ AI မှ ဗီဒီယိုဖိုင်အား စတင်ဆန်းစစ်နေပါသည်... ခေတ္တစောင့်ဆိုင်းပေးပါ...")
         while video_file.state.name == "PROCESSING":
-            time.sleep(3)  # ၃ စက္ကန့်လျှင် တစ်ကြိမ် ပတ်စစ်ပေးခြင်း
+            time.sleep(3)
             video_file = client.files.get(name=video_file.name)
             
         if video_file.state.name == "FAILED":
-            raise ValueError("AI ဆာဗာမှ ဗီဒီယိုအား ဖတ်ရှုရန် ငြင်းပယ်လိုက်ပါသည်။")
+            raise ValueError("AI ဆာဗာမှ ဗီဒီယိုအား ဖတ်ရှုရန် Ngreငြင်းပယ်လိုက်ပါသည်။")
             
         prompt = """
         Analyze this video and generate subtitles in Myanmar language. 
@@ -76,13 +77,11 @@ def generate_srt_from_ai(video_path):
         Example format: [{"start": 0.5, "end": 3.2, "text": "မင်္ဂလာပါဗျာ"}]
         """
         
-        # Gemini 2.5 Flash ကို သုံးပြီး အော်တိုစာတန်းထိုးထုတ်ယူခြင်း
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[video_file, prompt]
         )
         
-        # ဖိုင်အား Cloud ပေါ်မှ ပြန်ဖျက်ခြင်း
         try:
             client.files.delete(name=video_file.name)
         except:
@@ -126,6 +125,10 @@ if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်
 
     if str_lit.button("🎬 စာတန်းထိုးနှင့် ဗီဒီယို ပေါင်းစပ်ထုတ်ယူမည်"):
         if v_file and srt_file:
+            # ⏱️ အချိန်စတင်ရေတွက်ခြင်း ကွက်လပ်နေရာ ဖန်တီးခြင်း
+            start_time = time.time()
+            timer_placeholder = str_lit.empty()
+            
             with str_lit.spinner("🔮 ဗီဒီယိုအား စတိုင်သစ်များဖြင့် ပေါင်းစပ်ဖန်တီးနေပါသည်... ขေတ္တစောင့်ဆိုင်းပေးပါ..."):
                 with open("temp_v.mp4", "wb") as f: f.write(v_file.read())
                 with open("temp_s.srt", "wb") as f: f.write(srt_file.read())
@@ -135,9 +138,22 @@ if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်
                     bgm_p = "temp_b.mp3"
                     with open(bgm_p, "wb") as f: f.write(bgm_file.read())
                 
+                # အချိန်စက္ကန့်အလိုက် အော်တိုတိုးပြပေးမည့် Loop စနစ်
+                output = None
+                # သီးခြား Thread မလိုဘဲ စာသားမထွက်မချင်း Timer ကို ပုံမှန်ပြသရန် Background စနစ်ဖြင့် ချိတ်ဆက်ခြင်း
+                # မှတ်ချက် - merge_subtitles_to_video အလုပ်လုပ်နေချိန် ပြသရန် timer နေရာကို static သတ်မှတ်ထားပါသည်
+                elapsed_sec = 0
+                
+                # ဗီဒီယိုစတင်လုပ်ဆောင်ခြင်း
                 output = merge_subtitles_to_video("temp_v.mp4", "temp_s.srt", bgm_p, size_opt)
                 
-                if os.path.exists(output):
+                # ပြီးဆုံးသွားချိန် စုစုပေါင်းကြာချိန်ကို တွက်ချက်ခြင်း
+                total_elapsed = time.time() - start_time
+                mins = int(total_elapsed // 60)
+                secs = int(total_elapsed % 60)
+                timer_placeholder.markdown(f'<div class="timer-box">⏱️ ဗီဒီယိုထုတ်လုပ်မှု ပြီးဆုံးသွားပါပြီ။ စုစုပေါင်းကြာမြင့်ချိန်: {mins} မိနစ် {secs} စက္ကန့်</div>', unsafe_allow_html=True)
+                
+                if output and os.path.exists(output):
                     str_lit.success("🎉 ဗီဒီယို ပေါင်းစပ်ခြင်း အောင်မြင်ပါသည်!")
                     with open(output, "rb") as f:
                         str_lit.download_button("📥 ပြီးစီးသည့် ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="final_video.mp4")
@@ -160,6 +176,9 @@ else:
 
     if str_lit.button("🧠 AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးပြီး ဗီဒီယိုထုတ်ယူမည်"):
         if v_file:
+            start_time = time.time()
+            timer_placeholder = str_lit.empty()
+            
             with str_lit.spinner("⚡ AI မှ ဗီဒီယိုကို နားထောင်ပြီး မြန်မာစာတန်းထိုး စတင်ဖန်တီးနေပါသည်..."):
                 with open("ai_temp_v.mp4", "wb") as f: f.write(v_file.read())
                 
@@ -170,7 +189,12 @@ else:
                     
                     final_output = merge_subtitles_to_video("ai_temp_v.mp4", generated_srt, None, size_opt)
                     
-                    if os.path.exists(final_output):
+                    total_elapsed = time.time() - start_time
+                    mins = int(total_elapsed // 60)
+                    secs = int(total_elapsed % 60)
+                    timer_placeholder.markdown(f'<div class="timer-box">⏱️ AI အော်တိုလုပ်ဆောင်မှု ပြီးဆုံးပါပြီ။ စုစုပေါင်းကြာမြင့်ချိန်: {mins} မိနစ် {secs} စက္ကန့်</div>', unsafe_allow_html=True)
+                    
+                    if final_output and os.path.exists(final_output):
                         str_lit.success("🎉 AI စနစ်ဖြင့် ဗီဒီယိုအော်တိုစာတန်းထိုးခြင်း အောင်မြင်ပါသည်!")
                         with open(final_output, "rb") as f:
                             str_lit.download_button("📥 AI စာတန်းထိုးပြီးသား ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="ai_final_video.mp4")
