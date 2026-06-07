@@ -1,7 +1,8 @@
 import streamlit as str_lit
 import os
+import time  # ⏳ ဗီဒီယိုဆာဗာပေါ်မှာ အဆင်သင့်ဖြစ်သည်အထိ စောင့်ရန်
 import google.generativeai as genai
-from google import genai as genai_v1  # AQ. Key စနစ်သစ်အတွက် သီးသန့်ယူခြင်း
+from google import genai as genai_v1
 import re
 import json
 from utils.video_merger import merge_subtitles_to_video
@@ -17,7 +18,6 @@ else:
         with open("key.txt", "r") as f:
             api_key_str = f.read().strip()
 
-# စနစ်ဟောင်းအတွက်ပါ Key ချိတ်ဆက်ထားခြင်း
 if api_key_str:
     genai.configure(api_key=api_key_str)
 
@@ -54,12 +54,21 @@ def generate_srt_from_ai(video_path):
         if not api_key_str:
             raise ValueError("Streamlit Secrets ထဲတွင် API Key မတွေ့ရှိရပါ။")
             
-        # ✨ AQ. နှင့် စသော သော့ချက်သစ်များအတွက် Google GenAI Client အသစ်ဖြင့် ချိတ်ဆက်ခြင်း
         client = genai_v1.Client(api_key=api_key_str)
         
         # ဗီဒီယိုအား AI Cloud ပေါ်သို့ တင်ခြင်း
+        str_lit.info("⏳ ဗီဒီယိုအား AI ဆာဗာသို့ တင်သွင်းနေပါသည်...")
         video_file = client.files.upload(file=video_path)
         
+        # ✨ [CRITICAL FIX] ဗီဒီယိုဖိုင် ACTIVE ဖြစ်သည်အထိ ဆာဗာတွင် စောင့်ဆိုင်းပေးခြင်း
+        str_lit.info("⚡ AI မှ ဗီဒီယိုဖိုင်အား စတင်ဆန်းစစ်နေပါသည်... ခေတ္တစောင့်ဆိုင်းပေးပါ...")
+        while video_file.state.name == "PROCESSING":
+            time.sleep(3)  # ၃ စက္ကန့်လျှင် တစ်ကြိမ် ပတ်စစ်ပေးခြင်း
+            video_file = client.files.get(name=video_file.name)
+            
+        if video_file.state.name == "FAILED":
+            raise ValueError("AI ဆာဗာမှ ဗီဒီယိုအား ဖတ်ရှုရန် ငြင်းပယ်လိုက်ပါသည်။")
+            
         prompt = """
         Analyze this video and generate subtitles in Myanmar language. 
         Return ONLY a raw JSON array of objects. Do not include markdown formatting, no ```json, no explanations.
@@ -67,13 +76,13 @@ def generate_srt_from_ai(video_path):
         Example format: [{"start": 0.5, "end": 3.2, "text": "မင်္ဂလာပါဗျာ"}]
         """
         
-        # Gemini 1.5 Flash ဖြင့် စာတန်းအော်တိုထုတ်ယူခြင်း
+        # Gemini 2.5 Flash ကို သုံးပြီး အော်တိုစာတန်းထိုးထုတ်ယူခြင်း
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[video_file, prompt]
         )
         
-        # အသုံးပြုပြီးသော ဖိုင်အား Cloud ပေါ်မှ ပြန်ဖျက်ခြင်း
+        # ဖိုင်အား Cloud ပေါ်မှ ပြန်ဖျက်ခြင်း
         try:
             client.files.delete(name=video_file.name)
         except:
@@ -170,4 +179,4 @@ else:
                         for tmp in ["ai_temp_v.mp4", generated_srt, final_output]:
                             if os.path.exists(tmp): os.remove(tmp)
         else:
-            str_lit.warning("⚠️ ကျေးွက်ပြု၍ ဗီဒီယိုဖိုင် တင်ပေးပါဗျာ။")
+            str_lit.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယိုဖိုင် တင်ပေးပါဗျာ။")
