@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 import subprocess
+import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 
 def parse_srt(srt_path):
@@ -83,29 +84,20 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (target_w, target_h))
     
-    # ✨ [💥 FONT DEEP SEARCH SYSTEM] ဆာဗာပေါ်ရှိ မည်သည့်နေရာကမဆို ဖောင့်ကို ရှာတွေ့အောင် အတင်းရှာခိုင်းခြင်း
-    possible_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "myanmar.ttf"),
-        os.path.join(os.getcwd(), "myanmar.ttf"),
-        "myanmar.ttf",
-        "/app/ai-myanmar-subtitler/myanmar.ttf" # Streamlit Default Container Path
-    ]
-    
-    font_file = None
-    for path in possible_paths:
-        if os.path.exists(path):
-            font_file = path
-            break
-
-    # တကယ်လို့ လမ်းကြောင်းအားလုံး လွဲနေပါက လက်ရှိဗီဒီယိုရှိရာ Folder ထဲမှာပါ ထပ်ရှာခိုင်းခြင်း
-    if not font_file:
-        font_file = os.path.join(os.path.dirname(video_path), "myanmar.ttf")
+    # ✨ [FONT DOWNLOAD SYSTEM] Google Server မှ Padauk (မြန်မာဖောင့်) အား အွန်လိုင်းမှ တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
+    font_path = "padauk_live.ttf"
+    if not os.path.exists(font_path):
+        try:
+            # Google Fonts ရဲ့ တရားဝင် အမှန်ကန်ဆုံး မြန်မာစာလုံး TrueType (.ttf) လင့်ခ်
+            font_url = "https://github.com/google/fonts/raw/main/ofl/padauk/Padauk-Regular.ttf"
+            urllib.request.urlretrieve(font_url, font_path)
+        except Exception:
+            font_path = "myanmar.ttf" # Failback
 
     try:
-        font = ImageFont.truetype(font_file, int(target_h * 0.045))
-        title_font = ImageFont.truetype(font_file, int(target_h * 0.035))
+        font = ImageFont.truetype(font_path, int(target_h * 0.048))
+        title_font = ImageFont.truetype(font_path, int(target_h * 0.035))
     except Exception:
-        # နောက်ဆုံးအဆင့် ကယ်တင်ရှင်စနစ် (စက်ထဲက Default ဆွဲသုံးခြင်း)
         font = ImageFont.load_default()
         title_font = font
 
