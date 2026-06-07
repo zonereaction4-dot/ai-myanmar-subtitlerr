@@ -1,23 +1,29 @@
 import streamlit as str_lit
 import os
 import google.generativeai as genai
+from google import genai as genai_v1  # AQ. Key စနစ်သစ်အတွက် သီးသန့်ယူခြင်း
 import re
 import json
 from utils.video_merger import merge_subtitles_to_video
 
-# 🔑 [AI KEY CONFIG] Streamlit Cloud Secrets မှတစ်ဆင့် Gemini API အား ချိတ်ဆက်ခြင်း
+# 🔑 [AI KEY CONFIG] Streamlit Cloud Secrets မှတစ်ဆင့် API Key ရယူခြင်း
+api_key_str = None
 if "GEMINI_API_KEY" in str_lit.secrets:
-    genai.configure(api_key=str_lit.secrets["GEMINI_API_KEY"])
+    api_key_str = str_lit.secrets["GEMINI_API_KEY"]
 elif "google_api_key" in str_lit.secrets:
-    genai.configure(api_key=str_lit.secrets["google_api_key"])
+    api_key_str = str_lit.secrets["google_api_key"]
 else:
     if os.path.exists("key.txt"):
         with open("key.txt", "r") as f:
-            genai.configure(api_key=f.read().strip())
+            api_key_str = f.read().strip()
+
+# စနစ်ဟောင်းအတွက်ပါ Key ချိတ်ဆက်ထားခြင်း
+if api_key_str:
+    genai.configure(api_key=api_key_str)
 
 str_lit.set_page_config(page_title="AI Myanmar Subtitler Pro", layout="wide")
 
-# Custom CSS for Premium UI
+# Premium UI Styling
 str_lit.markdown("""
     <style>
     .main-title { font-size: 36px !important; font-weight: bold; color: #FFFFFF; margin-bottom: 5px; }
@@ -45,8 +51,14 @@ def clean_json_string(raw_code):
 
 def generate_srt_from_ai(video_path):
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        video_file = genai.upload_file(path=video_path)
+        if not api_key_str:
+            raise ValueError("Streamlit Secrets ထဲတွင် API Key မတွေ့ရှိရပါ။")
+            
+        # ✨ AQ. နှင့် စသော သော့ချက်သစ်များအတွက် Google GenAI Client အသစ်ဖြင့် ချိတ်ဆက်ခြင်း
+        client = genai_v1.Client(api_key=api_key_str)
+        
+        # ဗီဒီယိုအား AI Cloud ပေါ်သို့ တင်ခြင်း
+        video_file = client.files.upload(file=video_path)
         
         prompt = """
         Analyze this video and generate subtitles in Myanmar language. 
@@ -55,9 +67,18 @@ def generate_srt_from_ai(video_path):
         Example format: [{"start": 0.5, "end": 3.2, "text": "မင်္ဂလာပါဗျာ"}]
         """
         
-        response = model.generate_content([video_file, prompt])
-        genai.delete_file(video_file.name)
+        # Gemini 1.5 Flash ဖြင့် စာတန်းအော်တိုထုတ်ယူခြင်း
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[video_file, prompt]
+        )
         
+        # အသုံးပြုပြီးသော ဖိုင်အား Cloud ပေါ်မှ ပြန်ဖျက်ခြင်း
+        try:
+            client.files.delete(name=video_file.name)
+        except:
+            pass
+            
         cleaned_reply = clean_json_string(response.text)
         data = json.loads(cleaned_reply)
         
@@ -96,7 +117,7 @@ if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်
 
     if str_lit.button("🎬 စာတန်းထိုးနှင့် ဗီဒီယို ပေါင်းစပ်ထုတ်ယူမည်"):
         if v_file and srt_file:
-            with str_lit.spinner("🔮 ဗီဒီယိုအား စတိုင်သစ်များဖြင့် ပေါင်းစပ်ဖန်တီးနေပါသည်... ခေတ္တစောင့်ဆိုင်းပေးပါ..."):
+            with str_lit.spinner("🔮 ဗီဒီယိုအား စတိုင်သစ်များဖြင့် ပေါင်းစပ်ဖန်တီးနေပါသည်... ขေတ္တစောင့်ဆိုင်းပေးပါ..."):
                 with open("temp_v.mp4", "wb") as f: f.write(v_file.read())
                 with open("temp_s.srt", "wb") as f: f.write(srt_file.read())
                 
@@ -113,7 +134,6 @@ if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်
                         str_lit.download_button("📥 ပြီးစီးသည့် ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="final_video.mp4")
                     str_lit.video(output)
                     
-                    # Clean up
                     for tmp in ["temp_v.mp4", "temp_s.srt", "temp_b.mp3", output]:
                         if tmp and os.path.exists(tmp): os.remove(tmp)
         else:
@@ -122,7 +142,6 @@ if mode == "✨ ဗီဒီယို + SRT + BGM တိုက်ရိုက်
 # --- MODE 2: AI AUTOMATIC SUBTITLE ---
 else:
     str_lit.markdown("### 🤖 Gemini AI ဖြင့် အော်တိုမြန်မာစာတန်းထိုးထုတ်ယူခြင်း")
-    str_lit.info("မှတ်ချက် - Gemini AI Cloud Server အလုပ်များနေချိန်တွင် 503 Unavailable ဖြစ်နိုင်ပါသည်။ ထိုသို့ဖြစ်ပါက အထက်ပါ နည်းလမ်း (၁) ကို သုံးပါ။")
     
     col1, col2 = str_lit.columns(2)
     with col1:
@@ -132,16 +151,14 @@ else:
 
     if str_lit.button("🧠 AI စနစ်ဖြင့် အော်တိုစာတန်းထိုးပြီး ဗီဒီယိုထုတ်ယူမည်"):
         if v_file:
-            with str_lit.spinner("⚡ AI မှ ဗီဒီယိုကို နားထောင်ပြီး မြန်မာစာတန်းထိုး စတင်ဖန်တီးနေပါသည် (၁ မိနစ်ခန့် ကြာနိုင်သည်)..."):
+            with str_lit.spinner("⚡ AI မှ ဗီဒီယိုကို နားထောင်ပြီး မြန်မာစာတန်းထိုး စတင်ဖန်တီးနေပါသည်..."):
                 with open("ai_temp_v.mp4", "wb") as f: f.write(v_file.read())
                 
-                # AI မှ SRT အော်တိုထုတ်ယူခြင်း
                 generated_srt = generate_srt_from_ai("ai_temp_v.mp4")
                 
                 if generated_srt and os.path.exists(generated_srt):
                     str_lit.text_area("📝 AI မှ ထုတ်ပေးလိုက်သော SRT စာသားများ-", open(generated_srt, 'r', encoding='utf-8').read(), height=150)
                     
-                    # 🎯 ART Font Effect ပါဝင်သော ဗီဒီယိုဖန်တီးရေးဆွဲမှုဆီသို့ လှမ်းပို့ခြင်း
                     final_output = merge_subtitles_to_video("ai_temp_v.mp4", generated_srt, None, size_opt)
                     
                     if os.path.exists(final_output):
@@ -150,8 +167,7 @@ else:
                             str_lit.download_button("📥 AI စာတန်းထိုးပြီးသား ဗီဒီယိုအား ဒေါင်းလုဒ်ဆွဲရန်", f, file_name="ai_final_video.mp4")
                         str_lit.video(final_output)
                         
-                        # Clean up
                         for tmp in ["ai_temp_v.mp4", generated_srt, final_output]:
                             if os.path.exists(tmp): os.remove(tmp)
         else:
-            str_lit.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယိုဖိုင် တင်ပေးပါဗျာ။")
+            str_lit.warning("⚠️ ကျေးွက်ပြု၍ ဗီဒီယိုဖိုင် တင်ပေးပါဗျာ။")
