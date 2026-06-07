@@ -69,7 +69,7 @@ def generate_srt_from_ai(video_path):
         
         # Gemini 1.5 Flash ဖြင့် စာတန်းအော်တိုထုတ်ယူခြင်း
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=[video_file, prompt]
         )
         
