@@ -84,19 +84,18 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (target_w, target_h))
     
-    # ✨ [FONT DOWNLOAD SYSTEM] Google Server မှ Padauk (မြန်မာဖောင့်) အား အွန်လိုင်းမှ တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
+    # Google Server မှ Padauk (မြန်မာဖောင့်) အား အွန်လိုင်းမှ ဆွဲယူခြင်း
     font_path = "padauk_live.ttf"
     if not os.path.exists(font_path):
         try:
-            # Google Fonts ရဲ့ တရားဝင် အမှန်ကန်ဆုံး မြန်မာစာလုံး TrueType (.ttf) လင့်ခ်
             font_url = "https://github.com/google/fonts/raw/main/ofl/padauk/Padauk-Regular.ttf"
             urllib.request.urlretrieve(font_url, font_path)
         except Exception:
-            font_path = "myanmar.ttf" # Failback
+            font_path = "myanmar.ttf"
 
     try:
-        font = ImageFont.truetype(font_path, int(target_h * 0.048))
-        title_font = ImageFont.truetype(font_path, int(target_h * 0.035))
+        font = ImageFont.truetype(font_path, int(target_h * 0.045))
+        title_font = ImageFont.truetype(font_path, int(target_h * 0.038))
     except Exception:
         font = ImageFont.load_default()
         title_font = font
@@ -126,22 +125,39 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
             elif sub['start'] > current_time:
                 break
                 
+        # 1. 💬 အောက်က မြန်မာစာတန်းထိုး (အဖြူရောင်စာသား + အမည်းရောင် Outline ထူထူ)
         if active_text:
             bbox = draw.textbbox((0, 0), active_text, font=font)
             text_w = bbox[2] - bbox[0]
             x = (target_w - text_w) // 2
             y = int(target_h * 0.82)
             
-            draw.text((x-2, y-2), active_text, font=font, fill="black")
-            draw.text((x+2, y-2), active_text, font=font, fill="black")
-            draw.text((x-2, y+2), active_text, font=font, fill="black")
-            draw.text((x+2, y+2), active_text, font=font, fill="black")
+            # 8-Directional Black Stroke (ထူထူစတိုင်)
+            stroke_w = 3
+            for dx in range(-stroke_w, stroke_w + 1):
+                for dy in range(-stroke_w, stroke_w + 1):
+                    if dx != 0 or dy != 0:
+                        draw.text((x + dx, y + dy), active_text, font=font, fill="black")
+            
+            # Main White Text
             draw.text((x, y), active_text, font=font, fill="white")
                 
+        # 2. 🏷️ အပေါ်ထောင့်က Title Font (အဖြူရောင်စာသား + အဝါရောင် Glow Outline)
         title_text = "Oneminutestory"
         t_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         t_w = t_bbox[2] - t_bbox[0]
-        draw.text((target_w - t_w - 20, 20), title_text, font=title_font, fill="yellow")
+        tx = target_w - t_w - 30
+        ty = 30
+        
+        # Yellow Glow/Outline ပြုလုပ်ရန် ဘေးပတ်လည်ကို အဝါရောင်အရင်ဆွဲခြင်း
+        glow_w = 2
+        for dx in range(-glow_w, glow_w + 1):
+            for dy in range(-glow_w, glow_w + 1):
+                if dx != 0 or dy != 0:
+                    draw.text((tx + dx, ty + dy), title_text, font=title_font, fill="#FCD116") # Yellow Glow
+        
+        # Main Title Text (အဖြူရောင်စာလုံး)
+        draw.text((tx, ty), title_text, font=title_font, fill="white")
 
         frame_out = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
         out.write(frame_out)
