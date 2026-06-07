@@ -83,25 +83,31 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (target_w, target_h))
     
-    # ✨ [FONT FIX] လမ်းကြောင်းပြတ်မသွားစေရန် Absolute Path (တည်နေရာအတိအကျ) စနစ်ဖြင့် ဖတ်ခိုင်းခြင်း
-    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    font_path = os.path.join(current_dir, "myanmar.ttf")
+    # ✨ [💥 FONT DEEP SEARCH SYSTEM] ဆာဗာပေါ်ရှိ မည်သည့်နေရာကမဆို ဖောင့်ကို ရှာတွေ့အောင် အတင်းရှာခိုင်းခြင်း
+    possible_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "myanmar.ttf"),
+        os.path.join(os.getcwd(), "myanmar.ttf"),
+        "myanmar.ttf",
+        "/app/ai-myanmar-subtitler/myanmar.ttf" # Streamlit Default Container Path
+    ]
     
-    # တကယ်လို့ ဖိုင်ရှာမတွေ့ပါက ပရောဂျက် Root Folder ထဲမှာပါ ရှာခိုင်းသည့်စနစ်
-    if not os.path.exists(font_path):
-        font_path = "myanmar.ttf"
-        
+    font_file = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            font_file = path
+            break
+
+    # တကယ်လို့ လမ်းကြောင်းအားလုံး လွဲနေပါက လက်ရှိဗီဒီယိုရှိရာ Folder ထဲမှာပါ ထပ်ရှာခိုင်းခြင်း
+    if not font_file:
+        font_file = os.path.join(os.path.dirname(video_path), "myanmar.ttf")
+
     try:
-        font = ImageFont.truetype(font_path, int(target_h * 0.045))
-        title_font = ImageFont.truetype(font_path, int(target_h * 0.035))
+        font = ImageFont.truetype(font_file, int(target_h * 0.045))
+        title_font = ImageFont.truetype(font_file, int(target_h * 0.035))
     except Exception:
-        # ဖောင့်လုံးဝဖတ်မရပါက Default ဖြစ်မသွားစေရန် အဓိက Linux ဖောင့်ကို လှမ်းခေါ်ခြင်း
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(target_h * 0.045))
-            title_font = font
-        except Exception:
-            font = ImageFont.load_default()
-            title_font = font
+        # နောက်ဆုံးအဆင့် ကယ်တင်ရှင်စနစ် (စက်ထဲက Default ဆွဲသုံးခြင်း)
+        font = ImageFont.load_default()
+        title_font = font
 
     frame_idx = 0
     subs.sort(key=lambda k: k['start'])
