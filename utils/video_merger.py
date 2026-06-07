@@ -46,7 +46,6 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    # Target Resolution & Crop Logic
     target_w, target_h = orig_w, orig_h
     crop_x, crop_y, crop_w, crop_h = 0, 0, orig_w, orig_h
     
@@ -81,21 +80,28 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
             crop_x = 0
             crop_y = (orig_h - crop_h) // 2
 
-    # Cloud Linux အတွက် လိုက်ဖက်သော mp4v codec ကိုသုံးခြင်း
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(temp_output, fourcc, fps, (target_w, target_h))
     
-    # ✨ Folder ထဲသို့ ထည့်ထားသော မြန်မာဖောင့်အား တိုက်ရိုက်ဖတ်ခြင်း
-    font_path = "myanmar.ttf"
+    # ✨ [FONT FIX] လမ်းကြောင်းပြတ်မသွားစေရန် Absolute Path (တည်နေရာအတိအကျ) စနစ်ဖြင့် ဖတ်ခိုင်းခြင်း
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    font_path = os.path.join(current_dir, "myanmar.ttf")
+    
+    # တကယ်လို့ ဖိုင်ရှာမတွေ့ပါက ပရောဂျက် Root Folder ထဲမှာပါ ရှာခိုင်းသည့်စနစ်
     if not os.path.exists(font_path):
-        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" # Cloud Failback
+        font_path = "myanmar.ttf"
         
     try:
         font = ImageFont.truetype(font_path, int(target_h * 0.045))
         title_font = ImageFont.truetype(font_path, int(target_h * 0.035))
     except Exception:
-        font = ImageFont.load_default()
-        title_font = font
+        # ဖောင့်လုံးဝဖတ်မရပါက Default ဖြစ်မသွားစေရန် အဓိက Linux ဖောင့်ကို လှမ်းခေါ်ခြင်း
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(target_h * 0.045))
+            title_font = font
+        except Exception:
+            font = ImageFont.load_default()
+            title_font = font
 
     frame_idx = 0
     subs.sort(key=lambda k: k['start'])
@@ -146,7 +152,6 @@ def merge_subtitles_to_video(video_path: str, srt_path: str, bgm_path: str = Non
     cap.release()
     out.release()
     
-    # Linux-based FFmpeg Command (Ultrafast Rendering)
     if bgm_path and os.path.exists(bgm_path):
         audio_filter = "[0:a]volume=0.85[a1];[1:a]volume=0.15[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=2"
         audio_command = [
